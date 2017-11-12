@@ -41,7 +41,7 @@ type Config struct {
 }
 
 func Configure(v interface{}) error {
-	return &DefaultConfig.Configure(v)
+	return DefaultConfig.Configure(v)
 }
 
 func (c *Config) Configure(v interface{}) error {
