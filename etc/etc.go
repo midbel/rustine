@@ -1,7 +1,6 @@
 package etc
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,13 +24,13 @@ func init() {
 		if filename == "" {
 			filename = prgname
 		}
-		DefaultConfig = &Config{
-			Default:   config,
-			Name:      prgname,
-			Files:     []string{filename},
-			Locations: ls,
-		}
 	}
+  DefaultConfig = &Config{
+    Default:   config,
+    Name:      prgname,
+    Files:     []string{filename},
+    Locations: ls,
+  }
 }
 
 type Config struct {
