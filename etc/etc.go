@@ -25,12 +25,12 @@ func init() {
 			filename = prgname
 		}
 	}
-  DefaultConfig = &Config{
-    Default:   config,
-    Name:      prgname,
-    Files:     []string{filename},
-    Locations: ls,
-  }
+	DefaultConfig = &Config{
+		Default:   config,
+		Name:      prgname,
+		Files:     []string{filename},
+		Locations: ls,
+	}
 }
 
 type Config struct {
