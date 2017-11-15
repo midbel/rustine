@@ -1,9 +1,10 @@
-package etc
+package cli
 
 import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 var DefaultConfig *Config
