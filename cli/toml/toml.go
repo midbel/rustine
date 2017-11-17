@@ -1,7 +1,7 @@
-package toml
+package main
 
 import (
-	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -9,12 +9,14 @@ import (
 )
 
 const (
-	comma             = ','
-	hash              = '#'
-	leftAngleBracket  = '['
-	rightAngleBracket = ']'
-	leftCurlyBrace    = '{'
-	rightCurlyBrace   = '}'
+	dot                = '.'
+	comma              = ','
+	equal              = '='
+	hash               = '#'
+	leftSquareBracket  = '['
+	rightSquareBracket = ']'
+	leftCurlyBracket   = '{'
+	rightCurlyBracket  = '}'
 )
 
 type section struct {
@@ -33,7 +35,17 @@ var ids = map[string]interface{}{
 	"false": false,
 }
 
-var ErrInvalidSyntax = errors.New("invalid syntax")
+type SyntaxError struct {
+	msg   string
+	token rune
+}
+
+func (s SyntaxError) Error() string {
+	if s.token == 0 {
+		return s.msg
+	}
+	return fmt.Sprintf("%s (%s)", s.msg, scanner.TokenString(s.token))
+}
 
 type lexer struct {
 	*scanner.Scanner
@@ -65,23 +77,53 @@ func New(r io.Reader) *lexer {
 	return &lexer{Scanner: s}
 }
 
+func debug(lex *lexer) {
+	for t := lex.Scan(); t != scanner.EOF; t = lex.Scan() {
+		switch t {
+		case scanner.Ident:
+			log.Printf(">> %+v", parseOption(lex))
+		case '[':
+			log.Printf("> %+v", parseSection(lex))
+		default:
+			break
+		}
+	}
+}
+
 func parseSection(lex *lexer) *section {
 	var n string
 	switch t := lex.Scan(); t {
 	case scanner.Ident:
 		n = lex.Text()
-	case leftAngleBracket:
+	case leftSquareBracket:
 		return parseSection(lex)
 	}
-	lex.Scan()
-	return &section{Label: n}
+	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {
+	}
+	return &section{Label: n, Options: parseOptions(lex)}
+}
+
+func parseOptions(lex *lexer) []*option {
+	var os []*option
+	for {
+		os = append(os, parseOption(lex))
+		if t := lex.Scan(); t == leftSquareBracket || t == scanner.EOF {
+			break
+		}
+	}
+	return os
 }
 
 func parseOption(lex *lexer) *option {
 	o := &option{Label: lex.Text()}
-	lex.Scan()
+	if t := lex.Scan(); t != equal {
+		panic("expected: '=' got: " + scanner.TokenString(t))
+	}
+	if t := lex.Peek(); t == '\n' {
+		panic("missing value")
+	}
 	switch t := lex.Scan(); t {
-	case leftAngleBracket, leftCurlyBrace:
+	case leftSquareBracket, leftCurlyBracket:
 		o.Value = parseComposite(lex)
 	default:
 		o.Value = parseSimple(lex)
@@ -91,22 +133,22 @@ func parseOption(lex *lexer) *option {
 
 func parseComposite(lex *lexer) interface{} {
 	switch lex.token {
-	case leftAngleBracket:
+	case leftSquareBracket:
 		vs := make([]interface{}, 0, 10)
-		for t := lex.Scan(); t != rightAngleBracket; t = lex.Scan() {
+		for t := lex.Scan(); t != rightSquareBracket; t = lex.Scan() {
 			switch t {
 			case comma:
 				continue
-			case leftAngleBracket, leftCurlyBrace:
+			case leftSquareBracket, leftCurlyBracket:
 				vs = append(vs, parseComposite(lex))
 			default:
 				vs = append(vs, parseSimple(lex))
 			}
 		}
 		return vs
-	case leftCurlyBrace:
+	case leftCurlyBracket:
 		vs := make(map[string]interface{})
-		for t := lex.Scan(); t != rightCurlyBrace; t = lex.Scan() {
+		for t := lex.Scan(); t != rightCurlyBracket; t = lex.Scan() {
 			if t == comma {
 				continue
 			}
