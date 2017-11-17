@@ -92,14 +92,20 @@ func debug(lex *lexer) {
 
 func parseSection(lex *lexer) *section {
 	var n string
-	switch t := lex.Scan(); t {
+	switch lex.token {
 	case scanner.Ident:
-		n = lex.Text()
+		ns := []string{lex.Text()}
+		for t := lex.Scan(); t != rightSquareBracket; t = lex.Scan() {
+			ns = append(ns, lex.Text())
+		}
+		n = strings.Join(ns, "")
 	case leftSquareBracket:
+		lex.Scan()
 		return parseSection(lex)
+	default:
+		panic("section: unexpected token " + scanner.TokenString(lex.token))
 	}
-	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {
-	}
+	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {}
 	return &section{Label: n, Options: parseOptions(lex)}
 }
 
