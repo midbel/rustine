@@ -105,11 +105,15 @@ func parseSection(lex *lexer) *section {
 	default:
 		panic("section: unexpected token " + scanner.TokenString(lex.token))
 	}
-	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {}
+	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {
+	}
 	return &section{Label: n, Options: parseOptions(lex)}
 }
 
 func parseOptions(lex *lexer) []*option {
+	if lex.token == leftSquareBracket {
+		return nil
+	}
 	var os []*option
 	for {
 		os = append(os, parseOption(lex))
@@ -123,10 +127,10 @@ func parseOptions(lex *lexer) []*option {
 func parseOption(lex *lexer) *option {
 	o := &option{Label: lex.Text()}
 	if t := lex.Scan(); t != equal {
-		panic("expected: '=' got: " + scanner.TokenString(t))
+		panic("option: expected: '=' got: " + scanner.TokenString(t))
 	}
 	if t := lex.Peek(); t == '\n' {
-		panic("missing value")
+		panic("option: missing value")
 	}
 	switch t := lex.Scan(); t {
 	case leftSquareBracket, leftCurlyBracket:
