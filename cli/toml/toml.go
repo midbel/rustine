@@ -1,8 +1,9 @@
-package main
+package toml
 
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"text/scanner"
@@ -78,22 +79,49 @@ func New(r io.Reader) *lexer {
 }
 
 func parseSection(lex *lexer, s *section) *section {
-	var n string
+	//var n string
+	sort.Slice(s.Sections, func(i, j int) bool {
+		return s.Sections[i].Label < s.Sections[j].Label
+	})
+	var curr *section
 	switch lex.token {
 	case scanner.Ident:
-		ns := []string{lex.Text()}
+		sup := s
+		for {
+			if lex.token == dot {
+				lex.Scan()
+			}
+			e := &section{Label: lex.Text()}
+			if lex.Peek() == rightSquareBracket && exists(e.Label, sup.Sections) {
+				panic("duplicate section: " + e.Label)
+			}
+			sup.Sections, sup = append(sup.Sections, e), e
+			if t := lex.Scan(); t == rightSquareBracket {
+				curr = e
+				break
+			}
+		}
+		/*ns := []string{lex.Text()}
 		for t := lex.Scan(); t != rightSquareBracket; t = lex.Scan() {
 			ns = append(ns, lex.Text())
 		}
-		n = strings.Join(ns, "")
+		n = strings.Join(ns, "")*/
 	case leftSquareBracket:
 		lex.Scan()
-		return parseSection(lex, nil)
+		return parseSection(lex, s)
 	default:
 		panic("section: unexpected token " + scanner.TokenString(lex.token))
 	}
 	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {}
-	return &section{Label: n, Options: parseOptions(lex)}
+	curr.Options = parseOptions(lex)
+	return curr //&section{Label: n, Options: parseOptions(lex)}
+}
+
+func exists(n string, vs []*section) bool {
+	ix := sort.Search(len(vs), func(i int) bool {
+		return vs[i].Label >= n
+	})
+	return ix < len(vs) && vs[ix].Label == n
 }
 
 func parseOptions(lex *lexer) []*option {
