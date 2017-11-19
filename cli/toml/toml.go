@@ -77,20 +77,7 @@ func New(r io.Reader) *lexer {
 	return &lexer{Scanner: s}
 }
 
-func debug(lex *lexer) {
-	for t := lex.Scan(); t != scanner.EOF; t = lex.Scan() {
-		switch t {
-		case scanner.Ident:
-			log.Printf(">> %+v", parseOption(lex))
-		case '[':
-			log.Printf("> %+v", parseSection(lex))
-		default:
-			break
-		}
-	}
-}
-
-func parseSection(lex *lexer) *section {
+func parseSection(lex *lexer, s *section) *section {
 	var n string
 	switch lex.token {
 	case scanner.Ident:
@@ -101,12 +88,11 @@ func parseSection(lex *lexer) *section {
 		n = strings.Join(ns, "")
 	case leftSquareBracket:
 		lex.Scan()
-		return parseSection(lex)
+		return parseSection(lex, nil)
 	default:
 		panic("section: unexpected token " + scanner.TokenString(lex.token))
 	}
-	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {
-	}
+	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {}
 	return &section{Label: n, Options: parseOptions(lex)}
 }
 
@@ -114,14 +100,20 @@ func parseOptions(lex *lexer) []*option {
 	if lex.token == leftSquareBracket {
 		return nil
 	}
-	var os []*option
+	os := make(map[string]struct{})
+	vs := make([]*option, 0)
 	for {
-		os = append(os, parseOption(lex))
+		o := parseOption(lex)
+		if _, ok := os[o.Label]; ok {
+			panic("duplicate option: " + o.Label)
+		}
+		os[o.Label] = struct{}{}
+		vs = append(vs, o)
 		if t := lex.Scan(); t == leftSquareBracket || t == scanner.EOF {
 			break
 		}
 	}
-	return os
+	return vs
 }
 
 func parseOption(lex *lexer) *option {
