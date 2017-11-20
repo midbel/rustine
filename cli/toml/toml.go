@@ -1,7 +1,6 @@
 package toml
 
 import (
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -36,18 +35,6 @@ var ids = map[string]interface{}{
 	"false": false,
 }
 
-type SyntaxError struct {
-	msg   string
-	token rune
-}
-
-func (s SyntaxError) Error() string {
-	if s.token == 0 {
-		return s.msg
-	}
-	return fmt.Sprintf("%s (%s)", s.msg, scanner.TokenString(s.token))
-}
-
 type lexer struct {
 	*scanner.Scanner
 	token rune
@@ -71,50 +58,48 @@ func (l *lexer) Scan() rune {
 	return l.token
 }
 
-func New(r io.Reader) *lexer {
+func start(r io.Reader) *lexer {
 	s := new(scanner.Scanner)
 	s.Init(r)
 	s.Mode = scanner.ScanIdents | scanner.ScanStrings | scanner.ScanFloats | scanner.ScanInts
 	return &lexer{Scanner: s}
 }
 
-func parseSection(lex *lexer, s *section) *section {
-	//var n string
-	sort.Slice(s.Sections, func(i, j int) bool {
-		return s.Sections[i].Label < s.Sections[j].Label
-	})
-	var curr *section
+func parseSection(lex *lexer, s *section, a bool) *section {
 	switch lex.token {
+	default:
+		panic("unexpected token " + scanner.TokenString(lex.token))
 	case scanner.Ident:
-		sup := s
-		for {
+		sort.Slice(s.Sections, func(i, j int) bool {
+			return s.Sections[i].Label < s.Sections[j].Label
+		})
+		var curr *section
+		for sup := s; lex.token != rightSquareBracket; sup = curr {
 			if lex.token == dot {
 				lex.Scan()
 			}
-			e := &section{Label: lex.Text()}
-			if lex.Peek() == rightSquareBracket && exists(e.Label, sup.Sections) {
-				panic("duplicate section: " + e.Label)
+			curr = &section{Label: lex.Text()}
+			if lex.Peek() == rightSquareBracket && exists(curr.Label, sup.Sections) && a {
+				panic("duplicate section: " + curr.Label)
 			}
-			sup.Sections, sup = append(sup.Sections, e), e
-			if t := lex.Scan(); t == rightSquareBracket {
-				curr = e
-				break
+			sup.Sections = append(sup.Sections, curr)
+			if t := lex.Scan(); t == '\n' || t == scanner.EOF {
+				panic("invalid syntax")
 			}
 		}
-		/*ns := []string{lex.Text()}
-		for t := lex.Scan(); t != rightSquareBracket; t = lex.Scan() {
-			ns = append(ns, lex.Text())
+		if t := lex.Scan(); !a {
+			if t != rightSquareBracket {
+				panic("invalid syntax: missing " + scanner.TokenString(rightSquareBracket))
+			}
+			lex.Scan()
 		}
-		n = strings.Join(ns, "")*/
+		curr.Options = parseOptions(lex)
+
+		return curr
 	case leftSquareBracket:
 		lex.Scan()
-		return parseSection(lex, s)
-	default:
-		panic("section: unexpected token " + scanner.TokenString(lex.token))
+		return parseSection(lex, s, false)
 	}
-	for t := lex.Scan(); t == rightSquareBracket; t = lex.Scan() {}
-	curr.Options = parseOptions(lex)
-	return curr //&section{Label: n, Options: parseOptions(lex)}
 }
 
 func exists(n string, vs []*section) bool {
@@ -125,7 +110,7 @@ func exists(n string, vs []*section) bool {
 }
 
 func parseOptions(lex *lexer) []*option {
-	if lex.token == leftSquareBracket {
+	if lex.token == leftSquareBracket || lex.token == scanner.EOF {
 		return nil
 	}
 	os := make(map[string]struct{})
