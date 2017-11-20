@@ -1,7 +1,9 @@
 package toml
 
 import (
+	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,6 +65,37 @@ func start(r io.Reader) *lexer {
 	s.Init(r)
 	s.Mode = scanner.ScanIdents | scanner.ScanStrings | scanner.ScanFloats | scanner.ScanInts
 	return &lexer{Scanner: s}
+}
+
+func Valid(r io.Reader) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("invalid toml file: %s:", e)
+		}
+	}()
+	type Namer interface {
+		Name() string
+	}
+	var n string
+	switch r := r.(type) {
+	default:
+		n = "default"
+	case Namer:
+		n = filepath.Base(r.Name())
+	case fmt.Stringer:
+		n = r.String()
+	}
+	lex := start(r)
+
+	cfg := &section{Label: n}
+	if t := lex.Scan(); t == scanner.Ident {
+		cfg.Options = parseOptions(lex)
+	}
+	for t := lex.Scan(); t != scanner.EOF; t = lex.Scan() {
+		parseSection(lex, cfg, true)
+	}
+
+	return err
 }
 
 func parseSection(lex *lexer, s *section, a bool) *section {
