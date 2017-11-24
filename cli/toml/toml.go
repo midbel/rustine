@@ -2,6 +2,7 @@ package toml
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"reflect"
@@ -61,6 +62,11 @@ var booleans = map[string]bool{
 
 type Decoder struct {
 	lex *lexer
+}
+
+func Unmarshal(bs []byte, v interface{}) error {
+	r := bytes.NewReader(bs)
+	return NewDecoder(r).Decode(v)
 }
 
 func NewDecoder(r io.Reader) *Decoder {
