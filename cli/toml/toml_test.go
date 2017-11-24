@@ -24,20 +24,39 @@ type conn struct {
 	User    user     `toml:"auth"`
 }
 
+func TestDecoderCompositeValues(t *testing.T) {
+	s := `
+group = "224.0.0.1"
+ports = [[31001, 31002], [32001, 32002]]
+auth = [
+  {name = "midbel", passwd = "midbelrules101"},
+  {name = "toml", passwd = "tomlrules101"},
+]
+  `
+	c := struct {
+		Group string
+		Ports [][]int64
+		Auth  []user
+	}{}
+	if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDecoderKeyTypes(t *testing.T) {
-  s := `
+	s := `
 group = "224.0.0.1"
 31001 = 31002
 "enabled" = true
   `
-  c := struct {
-    Host string `toml:"group"`
-    Port int64 `toml:"31001"`
-    Active bool `toml:"enabled"`
-  }{}
-  if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
-    t.Fatal(err)
-  }
+	c := struct {
+		Host   string `toml:"group"`
+		Port   int64  `toml:"31001"`
+		Active bool   `toml:"enabled"`
+	}{}
+	if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestDecodeNestedTables(t *testing.T) {
@@ -60,8 +79,8 @@ limit = 10
 auth = {name = "midbel", passwd = "tomlrules101"}
   `
 	c := struct {
-		Title    string `toml:"title"`
-		Pool pool `toml:"pool"`
+		Title string `toml:"title"`
+		Pool  pool   `toml:"pool"`
 	}{}
 	if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
 		t.Fatal(err)
