@@ -24,6 +24,22 @@ type conn struct {
 	User    user     `toml:"auth"`
 }
 
+func TestDecoderKeyTypes(t *testing.T) {
+  s := `
+group = "224.0.0.1"
+31001 = 31002
+"enabled" = true
+  `
+  c := struct {
+    Host string `toml:"group"`
+    Port int64 `toml:"31001"`
+    Active bool `toml:"enabled"`
+  }{}
+  if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
+    t.Fatal(err)
+  }
+}
+
 func TestDecodeNestedTables(t *testing.T) {
 	s := `
 title = "TOML parser test"

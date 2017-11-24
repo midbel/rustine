@@ -112,7 +112,7 @@ func start(r io.Reader) *lexer {
 }
 
 func parse(lex *lexer, v reflect.Value) error {
-	if t := lex.Scan(); t == scanner.Ident {
+	if t := lex.Scan(); t == scanner.Ident || t == scanner.String {
 		if err := parseOptions(lex, v); err != nil {
 			return err
 		}
@@ -182,7 +182,7 @@ func parseOptions(lex *lexer, v reflect.Value) error {
 }
 
 func parseOption(lex *lexer, fs map[string]reflect.Value) error {
-	f, ok := fs[lex.Text()]
+	f, ok := fs[strings.Trim(lex.Text(), "\"")]
 	if !ok {
 		return UndefinedError{"option", lex.Text()}
 	}
