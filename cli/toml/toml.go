@@ -1,10 +1,10 @@
 package toml
 
 import (
+	"bufio"
 	"fmt"
 	"io"
-	"path/filepath"
-	"sort"
+	"reflect"
 	"strconv"
 	"strings"
 	"text/scanner"
@@ -13,6 +13,7 @@ import (
 const (
 	dot                = '.'
 	comma              = ','
+	minus              = '-'
 	equal              = '='
 	hash               = '#'
 	leftSquareBracket  = '['
@@ -21,25 +22,62 @@ const (
 	rightCurlyBracket  = '}'
 )
 
-type section struct {
-	Label    string
-	Options  []*option
-	Sections []*section
+type MalformedError struct {
+	item string
+	want rune
+	got  rune
 }
 
-type option struct {
-	Label string
-	Value interface{}
+func (m MalformedError) Error() string {
+	if m.want != 0 {
+		return fmt.Sprintf("%s: expected %q, got %s", m.item, scanner.TokenString(m.want), scanner.TokenString(m.got))
+	} else {
+		return fmt.Sprintf("%s: unexpected token %s", m.item, scanner.TokenString(m.got))
+	}
 }
 
-var ids = map[string]interface{}{
+type DuplicateError struct {
+	item  string
+	label string
+}
+
+func (d DuplicateError) Error() string {
+	return fmt.Sprintf("duplicate %s: %s", d.item, d.label)
+}
+
+type UndefinedError struct {
+	item  string
+	label string
+}
+
+func (u UndefinedError) Error() string {
+	return fmt.Sprintf("undefined %s: %q", u.item, u.label)
+}
+
+var booleans = map[string]bool{
 	"true":  true,
 	"false": false,
+}
+
+type Decoder struct {
+	lex *lexer
+}
+
+func NewDecoder(r io.Reader) *Decoder {
+	return &Decoder{start(r)}
+}
+
+func (d *Decoder) Decode(v interface{}) error {
+	return parse(d.lex, reflect.ValueOf(v).Elem())
 }
 
 type lexer struct {
 	*scanner.Scanner
 	token rune
+}
+
+func (l *lexer) Token() string {
+	return scanner.TokenString(l.token)
 }
 
 func (l *lexer) Text() string {
@@ -62,175 +100,209 @@ func (l *lexer) Scan() rune {
 
 func start(r io.Reader) *lexer {
 	s := new(scanner.Scanner)
-	s.Init(r)
+	s.Init(bufio.NewReader(r))
 	s.Mode = scanner.ScanIdents | scanner.ScanStrings | scanner.ScanFloats | scanner.ScanInts
 	return &lexer{Scanner: s}
 }
 
-func Valid(r io.Reader) (err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			err = fmt.Errorf("invalid toml file: %s:", e)
-		}
-	}()
-	type Namer interface {
-		Name() string
-	}
-	var n string
-	switch r := r.(type) {
-	default:
-		n = "default"
-	case Namer:
-		n = filepath.Base(r.Name())
-	case fmt.Stringer:
-		n = r.String()
-	}
-	lex := start(r)
-
-	cfg := &section{Label: n}
+func parse(lex *lexer, v reflect.Value) error {
 	if t := lex.Scan(); t == scanner.Ident {
-		cfg.Options = parseOptions(lex)
+		if err := parseOptions(lex, v); err != nil {
+			return err
+		}
 	}
 	for t := lex.Scan(); t != scanner.EOF; t = lex.Scan() {
-		parseSection(lex, cfg, true)
+		if err := parseTable(lex, v); err != nil {
+			return err
+		}
 	}
-
-	return err
+	return nil
 }
 
-func parseSection(lex *lexer, s *section, a bool) *section {
+func parseTable(lex *lexer, v reflect.Value) error {
+	var k reflect.Kind
 	switch lex.token {
 	default:
-		panic("unexpected token " + scanner.TokenString(lex.token))
+		return MalformedError{item: "section", got: lex.token}
 	case scanner.Ident:
-		sort.Slice(s.Sections, func(i, j int) bool {
-			return s.Sections[i].Label < s.Sections[j].Label
-		})
-		var curr *section
-		for sup := s; lex.token != rightSquareBracket; sup = curr {
-			if lex.token == dot {
-				lex.Scan()
-			}
-			curr = &section{Label: lex.Text()}
-			if lex.Peek() == rightSquareBracket && exists(curr.Label, sup.Sections) && a {
-				panic("duplicate section: " + curr.Label)
-			}
-			sup.Sections = append(sup.Sections, curr)
-			if t := lex.Scan(); t == '\n' || t == scanner.EOF {
-				panic("invalid syntax")
-			}
-		}
-		if t := lex.Scan(); !a {
-			if t != rightSquareBracket {
-				panic("invalid syntax: missing " + scanner.TokenString(rightSquareBracket))
-			}
-			lex.Scan()
-		}
-		curr.Options = parseOptions(lex)
-
-		return curr
+		k = reflect.Struct
 	case leftSquareBracket:
+		k = reflect.Slice
 		lex.Scan()
-		return parseSection(lex, s, false)
 	}
+	var ok bool
+	for t := lex.token; t != rightSquareBracket; t = lex.Scan() {
+		if t == dot {
+			continue
+		}
+		v, ok = listFields(v)[lex.Text()]
+		if !ok {
+			return UndefinedError{"section", lex.Text()}
+		}
+	}
+	if t := v.Kind(); t != k {
+		return fmt.Errorf("wront type: expected %s, got %s", k, t)
+	}
+	switch t := lex.Scan(); t {
+	default:
+		return MalformedError{item: "section", got: lex.token}
+	case scanner.Ident:
+		return parseOptions(lex, v)
+	case rightSquareBracket:
+		lex.Scan()
+		f := reflect.New(v.Type().Elem()).Elem()
+		if err := parseOptions(lex, f); err != nil {
+			return err
+		}
+		v.Set(reflect.Append(v, f))
+	}
+	return nil
 }
 
-func exists(n string, vs []*section) bool {
-	ix := sort.Search(len(vs), func(i int) bool {
-		return vs[i].Label >= n
-	})
-	return ix < len(vs) && vs[ix].Label == n
-}
-
-func parseOptions(lex *lexer) []*option {
+func parseOptions(lex *lexer, v reflect.Value) error {
+	fs := listFields(v)
 	if lex.token == leftSquareBracket || lex.token == scanner.EOF {
 		return nil
 	}
-	os := make(map[string]struct{})
-	vs := make([]*option, 0)
 	for {
-		o := parseOption(lex)
-		if _, ok := os[o.Label]; ok {
-			panic("duplicate option: " + o.Label)
+		if err := parseOption(lex, fs); err != nil {
+			return err
 		}
-		os[o.Label] = struct{}{}
-		vs = append(vs, o)
 		if t := lex.Scan(); t == leftSquareBracket || t == scanner.EOF {
 			break
 		}
 	}
-	return vs
+	return nil
 }
 
-func parseOption(lex *lexer) *option {
-	o := &option{Label: lex.Text()}
+func parseOption(lex *lexer, fs map[string]reflect.Value) error {
+	f, ok := fs[lex.Text()]
+	if !ok {
+		return UndefinedError{"option", lex.Text()}
+	}
 	if t := lex.Scan(); t != equal {
-		panic("option: expected: '=' got: " + scanner.TokenString(t))
+		return MalformedError{"option", equal, t}
 	}
 	if t := lex.Peek(); t == '\n' {
-		panic("option: missing value")
+		return MalformedError{"option", scanner.Ident, t}
 	}
+	var err error
 	switch t := lex.Scan(); t {
-	case leftSquareBracket, leftCurlyBracket:
-		o.Value = parseComposite(lex)
-	default:
-		o.Value = parseSimple(lex)
-	}
-	return o
-}
-
-func parseComposite(lex *lexer) interface{} {
-	switch lex.token {
 	case leftSquareBracket:
-		vs := make([]interface{}, 0, 10)
-		for t := lex.Scan(); t != rightSquareBracket; t = lex.Scan() {
-			switch t {
-			case comma:
-				continue
-			case leftSquareBracket, leftCurlyBracket:
-				vs = append(vs, parseComposite(lex))
-			default:
-				vs = append(vs, parseSimple(lex))
-			}
-		}
-		return vs
+		err = parseArray(lex, f)
 	case leftCurlyBracket:
-		vs := make(map[string]interface{})
-		for t := lex.Scan(); t != rightCurlyBracket; t = lex.Scan() {
-			if t == comma {
-				continue
-			}
-			o := parseOption(lex)
-			vs[o.Label] = o.Value
-		}
-		return vs
+		err = parseMap(lex, f)
 	default:
-		return nil
+		err = parseSimple(lex, f, false)
 	}
+	return err
 }
 
-func parseSimple(lex *lexer) interface{} {
-	var v interface{}
-	switch t := lex.token; t {
-	case scanner.String:
-		v = strings.Trim(lex.Text(), "\"")
-	case scanner.Int:
-		v, _ = strconv.ParseInt(lex.Text(), 0, 64)
-	case scanner.Float:
-		v, _ = strconv.ParseFloat(lex.Text(), 64)
-	case scanner.Ident:
-		v = ids[lex.Text()]
-	case '-':
-		lex.Scan()
-		v = parseSimple(lex)
-		switch n := v.(type) {
-		case int64:
-			v = -n
-		case float64:
-			v = -n
-		}
-	default:
-		v = lex.Text()
+func parseMap(lex *lexer, v reflect.Value) error {
+	if k := v.Kind(); k != reflect.Struct {
+		return fmt.Errorf("table: struct expected, got %s", k)
 	}
-	return v
+	fs := listFields(v)
+	for t := lex.Scan(); t != rightCurlyBracket; t = lex.Scan() {
+		if t == comma {
+			continue
+		}
+		if err := parseOption(lex, fs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseArray(lex *lexer, f reflect.Value) error {
+	if k := f.Kind(); k != reflect.Slice {
+		return fmt.Errorf("array: slice expected, got %s", k)
+	}
+	for t := lex.Scan(); t != rightSquareBracket; t = lex.Scan() {
+		var err error
+		v := reflect.New(f.Type().Elem()).Elem()
+		switch t {
+		case comma:
+			continue
+		case leftSquareBracket:
+			err = parseArray(lex, v)
+		case leftCurlyBracket:
+			err = parseMap(lex, v)
+		default:
+			err = parseSimple(lex, v, false)
+		}
+		if err != nil {
+			return err
+		}
+		f.Set(reflect.Append(f, v))
+	}
+	return nil
+}
+
+func parseSimple(lex *lexer, f reflect.Value, r bool) error {
+	switch t, k := lex.token, f.Kind(); {
+	case t == scanner.String && k == reflect.String:
+		f.SetString(strings.Trim(lex.Text(), "\""))
+	case t == scanner.Int && isUint(k):
+		v, _ := strconv.ParseUint(lex.Text(), 0, 64)
+		f.SetUint(v)
+	case t == scanner.Int && isInt(k):
+		v, _ := strconv.ParseInt(lex.Text(), 0, 64)
+		if r {
+			v = -v
+		}
+		f.SetInt(v)
+	case t == scanner.Float && isFloat(k):
+		v, _ := strconv.ParseFloat(lex.Text(), 64)
+		if r {
+			v = -v
+		}
+		f.SetFloat(v)
+	case t == scanner.Ident && k == reflect.Bool:
+		f.SetBool(booleans[lex.Text()])
+	case t == minus && (isInt(k) || isFloat(k)):
+		lex.Scan()
+		return parseSimple(lex, f, true)
+	default:
+		return fmt.Errorf("option: can not assign %s to %s", lex.Text(), k)
+	}
+	return nil
+}
+
+func listFields(v reflect.Value) map[string]reflect.Value {
+	fs := make(map[string]reflect.Value)
+	for i, t := 0, v.Type(); i < v.NumField(); i++ {
+		f := v.Field(i)
+		if !f.CanSet() {
+			continue
+		}
+		switch f.Kind() {
+		case reflect.Interface:
+			f = f.Elem().Elem()
+		case reflect.Ptr:
+			f = f.Elem()
+		}
+		z := t.Field(i)
+		switch n := z.Tag.Get("toml"); n {
+		case "-":
+			continue
+		case "":
+			fs[strings.ToLower(z.Name)] = f
+		default:
+			fs[n] = f
+		}
+	}
+	return fs
+}
+
+func isInt(k reflect.Kind) bool {
+	return k == reflect.Int || k == reflect.Int8 || k == reflect.Int16 || k == reflect.Int32 || k == reflect.Int64
+}
+
+func isUint(k reflect.Kind) bool {
+	return k == reflect.Uint || k == reflect.Uint8 || k == reflect.Uint16 || k == reflect.Uint32 || k == reflect.Uint64
+}
+
+func isFloat(k reflect.Kind) bool {
+	return k == reflect.Float32 || k == reflect.Float64
 }
