@@ -3,6 +3,7 @@ package toml
 import (
 	"strings"
 	"testing"
+  "time"
 )
 
 type user struct {
@@ -24,6 +25,22 @@ type conn struct {
 	User    user     `toml:"auth"`
 }
 
+func TestDecodeDatetime(t *testing.T) {
+  s := `
+odt1 = 1979-05-27T07:32:00Z
+odt2 = 1979-05-27T00:32:00-07:00
+odt3 = 1979-05-27T00:32:00.999999-07:00
+  `
+  c := struct {
+    Odt1 time.Time `toml:"odt1"`
+    Odt2 time.Time `toml:"odt2"`
+    Odt3 time.Time `toml:"odt3"`
+  }{}
+  if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
+    t.Fatal(err)
+  }
+}
+
 func TestDecoderCompositeValues(t *testing.T) {
 	s := `
 group = "224.0.0.1"
@@ -33,12 +50,20 @@ auth = [
   {name = "toml", passwd = "tomlrules101"},
 ]
   `
-	c := struct {
+	c1 := struct {
 		Group string
 		Ports [][]int64
 		Auth  []user
 	}{}
-	if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
+	if err := NewDecoder(strings.NewReader(s)).Decode(&c1); err != nil {
+		t.Fatal(err)
+	}
+	c2 := struct {
+		Group string
+		Ports [][]int64
+		Auth  []map[string]interface{}
+	}{}
+	if err := NewDecoder(strings.NewReader(s)).Decode(&c2); err != nil {
 		t.Fatal(err)
 	}
 }
