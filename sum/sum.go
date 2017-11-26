@@ -5,6 +5,10 @@ import (
 	"encoding/binary"
 )
 
+const (
+	mod16 = 255
+)
+
 func Sum1071(bs []byte) uint16 {
 	r := bytes.NewBuffer(bs)
 	if len(bs)%2 != 0 {
@@ -26,12 +30,12 @@ func Sum1071(bs []byte) uint16 {
 }
 
 func Fletcher16(bs []byte) uint16 {
-	var s1, s2 byte
+	var s1, s2 uint16
 	for i := 0; i < len(bs); i++ {
-		s1 = (s1 + bs[i]) % 255
-		s2 = (s2 + s1) % 255
+		s1 = (s1 + uint16(bs[i])) % mod16
+		s2 = (s2 + s1) % mod16
 	}
-	return uint16(s2)<<8 | uint16(s1)
+	return (s2<<8) | uint16(s1)
 }
 
 func Fletcher32(bs []byte) uint32 {
