@@ -24,3 +24,15 @@ func Sum1071(bs []byte) uint16 {
 	}
 	return uint16(s)
 }
+
+func Fletcher16(bs []byte) uint16 {
+  return 0
+}
+
+func Fletcher32(bs []byte) uint32 {
+  return 0
+}
+
+func Fletcher64(bs []byte) uint64 {
+  return 0
+}
