@@ -26,7 +26,12 @@ func Sum1071(bs []byte) uint16 {
 }
 
 func Fletcher16(bs []byte) uint16 {
-  return 0
+  var s1, s2 byte
+  for i := 0; i < len(bs); i++ {
+    s1 = (s1 + bs[i]) % 255
+    s2 = (s2 + s1) % 255
+  }
+  return uint16(s2)<<8 | uint16(s1)
 }
 
 func Fletcher32(bs []byte) uint32 {

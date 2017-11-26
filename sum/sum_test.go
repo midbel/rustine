@@ -7,6 +7,27 @@ import (
 	"testing"
 )
 
+func TestFletcher16(t *testing.T) {
+  data := []struct {
+    Value string
+    Want string
+  }{
+    {Value: "0102", Want: "0403"},
+  }
+  for i, d := range data {
+		v, _ := hex.DecodeString(d.Value)
+		w, _ := hex.DecodeString(d.Want)
+
+    r := Fletcher16(v)
+    bs := make([]byte, binary.Size(r))
+    binary.BigEndian.PutUint16(bs, r)
+
+    if !bytes.Equal(bs, w) {
+      t.Errorf("%d) want %x, got %x", i+1, w, bs)
+    }
+  }
+}
+
 func TestSum1071(t *testing.T) {
 	data := []struct {
 		Value string
