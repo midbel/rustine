@@ -41,6 +41,29 @@ odt3 = 1979-05-27T00:32:00.999999-07:00
 	}
 }
 
+func TestDecodePointer(t *testing.T) {
+	s := `
+address = "localhost:1024"
+
+[[channels]]
+server = "10.0.1.1:22"
+enabled = false
+user = {user = "hello", passwd = "helloworld"}
+
+[[channels]]
+server = "10.0.1.2:22"
+enabled = false
+user = {user = "hello", passwd = "helloworld"}
+	`
+	c := struct {
+		Addr string `toml:"address"`
+		Hosts []*conn `toml:"channels"`
+	}{}
+	if err := NewDecoder(strings.NewReader(s)).Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDecoderCompositeValues(t *testing.T) {
 	s := `
 group = "224.0.0.1"
