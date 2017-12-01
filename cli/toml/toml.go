@@ -147,7 +147,7 @@ func parseTable(lex *lexer, v reflect.Value) error {
 		}
 	}
 	if t := v.Kind(); t != k {
-		return fmt.Errorf("wront type: expected %s, got %s", k, t)
+		return fmt.Errorf("wrong type: expected %s, got %s", k, t)
 	}
 	switch t := lex.Scan(); t {
 	default:
