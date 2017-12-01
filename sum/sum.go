@@ -35,7 +35,7 @@ func Fletcher16(bs []byte) uint16 {
 		s1 = (s1 + uint16(bs[i])) % mod16
 		s2 = (s2 + s1) % mod16
 	}
-	return (s2<<8) | uint16(s1)
+	return (s2 << 8) | uint16(s1)
 }
 
 func Fletcher32(bs []byte) uint32 {

@@ -145,6 +145,12 @@ func parseTable(lex *lexer, v reflect.Value) error {
 		if !ok {
 			return UndefinedError{"section", lex.Text()}
 		}
+		switch k := v.Kind(); {
+		case k == reflect.Slice && v.IsNil():
+			v.Set(reflect.MakeSlice(v.Type(), 0, 0))
+		case k == reflect.Map && v.IsNil():
+			v.Set(reflect.MakeMap(v.Type()))
+		}
 	}
 	if t := v.Kind(); t != k {
 		return fmt.Errorf("wrong type: expected %s, got %s", k, t)
@@ -156,8 +162,13 @@ func parseTable(lex *lexer, v reflect.Value) error {
 		return parseOptions(lex, v)
 	case rightSquareBracket:
 		lex.Scan()
-		f := reflect.New(v.Type().Elem()).Elem()
-		if err := parseOptions(lex, f); err != nil {
+
+		e := v.Type().Elem()
+		if e.Kind() == reflect.Ptr {
+			e = e.Elem()
+		}
+		f := reflect.New(e)
+		if err := parseOptions(lex, f.Elem()); err != nil {
 			return err
 		}
 		v.Set(reflect.Append(v, f))
