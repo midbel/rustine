@@ -163,15 +163,18 @@ func parseTable(lex *lexer, v reflect.Value) error {
 	case rightSquareBracket:
 		lex.Scan()
 
-		e := v.Type().Elem()
-		if e.Kind() == reflect.Ptr {
-			e = e.Elem()
+		var f, z reflect.Value
+		if e := v.Type().Elem(); e.Kind() == reflect.Ptr {
+			z = reflect.New(e.Elem())
+			f = z.Elem()
+		} else {
+			f = reflect.New(e).Elem()
+			z = f
 		}
-		f := reflect.New(e)
-		if err := parseOptions(lex, f.Elem()); err != nil {
+		if err := parseOptions(lex, f); err != nil {
 			return err
 		}
-		v.Set(reflect.Append(v, f))
+		v.Set(reflect.Append(v, z))
 	}
 	return nil
 }
