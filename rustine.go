@@ -13,11 +13,9 @@ const (
 	numbers = "0123456789"
 )
 
-func init() {
-	rand.Seed(time.Now().Unix())
-}
-
 func RandomString(c int) string {
+	rand.Seed(time.Now().Unix())
+
 	b := new(bytes.Buffer)
 
 	cs := []byte(lowers + uppers + numbers)
