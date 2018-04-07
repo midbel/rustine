@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,6 +23,66 @@ type Header struct {
 	Mode    int
 	Length  int
 	ModTime time.Time
+}
+
+type Writer struct {
+	inner io.Writer
+}
+
+func NewWriter(w io.Writer) *Writer {
+	w.Write(magic)
+	w.Write([]byte{0x0A})
+	return &Writer{w}
+}
+
+func (w *Writer) WriteHeader(h *Header) error {
+	buf := new(bytes.Buffer)
+	if err := writeHeaderField(buf, path.Base(h.Name)+"/", 16); err != nil {
+		return err
+	}
+	t := h.ModTime.Unix()
+	if err := writeHeaderField(buf, strconv.FormatInt(t, 10), 12); err != nil {
+		return err
+	}
+	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Uid), 10), 6); err != nil {
+		return err
+	}
+	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Gid), 10), 6); err != nil {
+		return err
+	}
+	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Mode), 8), 8); err != nil {
+		return err
+	}
+	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Length), 10), 10); err != nil {
+		return err
+	}
+	buf.Write(feed)
+	_, err := io.Copy(w.inner, buf)
+	return err
+}
+
+func writeHeaderField(w io.Writer, s string, n int) error {
+	v := strings.Repeat(" ", n-len(s))
+	_, err := io.WriteString(w, s+v)
+	return err
+}
+
+func (w *Writer) Write(bs []byte) (int, error) {
+	vs := make([]byte, len(bs))
+	copy(vs, bs)
+	if len(bs)%2 == 1 {
+		vs = append(vs, 0x0A)
+	}
+	n, err := w.inner.Write(vs)
+	if err != nil {
+		return n, err
+	}
+	return len(bs), err
+}
+
+func (w *Writer) Close() error {
+	_, err := w.inner.Write([]byte{0x0A})
+	return err
 }
 
 type Reader struct {
@@ -79,7 +141,20 @@ func (r *Reader) Read(bs []byte) (int, error) {
 			return 0, err
 		}
 	}
-	return io.ReadAtLeast(r.inner, bs, r.hdr.Length)
+	size := r.hdr.Length
+	if size%2 == 1 {
+		size++
+	}
+	vs := make([]byte, size)
+	n, err := io.ReadFull(r.inner, vs)
+	if err != nil {
+		r.err = err
+	}
+	r.hdr = nil
+	if size%2 == 1 {
+		n--
+	}
+	return copy(bs, vs[:n]), r.err
 }
 
 func readFilename(r io.Reader, h *Header) error {
@@ -98,7 +173,7 @@ func readModTime(r io.Reader, h *Header) error {
 	}
 	i, err := strconv.ParseInt(string(bs), 0, 64)
 	if err != nil {
-		return err
+		return fmt.Errorf("time: %s", err)
 	}
 	h.ModTime = time.Unix(i, 0)
 	return nil
@@ -110,7 +185,7 @@ func readFileInfos(r io.Reader, h *Header) error {
 	} else {
 		i, err := strconv.ParseInt(string(bs), 0, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("uid: %s", err)
 		}
 		h.Uid = int(i)
 	}
@@ -119,7 +194,7 @@ func readFileInfos(r io.Reader, h *Header) error {
 	} else {
 		i, err := strconv.ParseInt(string(bs), 0, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("gid: %s", err)
 		}
 		h.Gid = int(i)
 	}
@@ -128,7 +203,7 @@ func readFileInfos(r io.Reader, h *Header) error {
 	} else {
 		i, err := strconv.ParseInt(string(bs), 0, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("mode: %s", err)
 		}
 		h.Mode = int(i)
 	}
@@ -137,7 +212,7 @@ func readFileInfos(r io.Reader, h *Header) error {
 	} else {
 		i, err := strconv.ParseInt(string(bs), 0, 64)
 		if err != nil {
-			return err
+			return fmt.Errorf("length: %s", err)
 		}
 		h.Length = int(i)
 	}
