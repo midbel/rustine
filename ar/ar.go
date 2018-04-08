@@ -86,7 +86,7 @@ func (w *Writer) Close() error {
 }
 
 type Reader struct {
-	inner io.Reader
+	inner *bufio.Reader
 	hdr   *Header
 	err   error
 }
@@ -110,6 +110,9 @@ func (r *Reader) Next() (*Header, error) {
 	var h Header
 	if r.err != nil {
 		return nil, r.err
+	}
+	if _, err := r.inner.Peek(16); err != nil {
+		return nil, io.EOF
 	}
 	if err := readFilename(r.inner, &h); err != nil {
 		r.err = err
@@ -135,25 +138,15 @@ func (r *Reader) Read(bs []byte) (int, error) {
 	if r.err != nil {
 		return 0, r.err
 	}
-	if r.hdr == nil {
-		_, err := r.Next()
-		if err != nil {
-			return 0, err
-		}
-	}
-	size := r.hdr.Length
-	if size%2 == 1 {
-		size++
-	}
-	vs := make([]byte, size)
+	vs := make([]byte, r.hdr.Length)
 	n, err := io.ReadFull(r.inner, vs)
 	if err != nil {
 		r.err = err
 	}
-	r.hdr = nil
-	if size%2 == 1 {
-		n--
+	if r.hdr.Length%2 == 1 {
+		r.inner.Discard(1)
 	}
+	r.hdr = nil
 	return copy(bs, vs[:n]), r.err
 }
 
