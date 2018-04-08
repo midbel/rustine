@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+  "io/ioutil"
+  "os"
 	"path"
 	"strconv"
 	"strings"
@@ -91,6 +93,31 @@ type Reader struct {
 	err   error
 }
 
+func List(file string) ([]*Header, error) {
+  f, err := os.Open(file)
+  if err != nil {
+    return nil, err
+  }
+  defer f.Close()
+
+  r, err := NewReader(f)
+  if err != nil {
+    return nil, err
+  }
+  hs := make([]*Header, 0, 100)
+  for {
+    h, err := r.Next()
+    if err == io.EOF {
+      break
+    }
+    hs = append(hs, h)
+    if _, err := io.CopyN(ioutil.Discard, r, int64(h.Length)); err != nil {
+      return nil, err
+    }
+  }
+  return hs, nil
+}
+
 func NewReader(r io.Reader) (*Reader, error) {
 	rs := bufio.NewReader(r)
 	bs, err := rs.Peek(len(magic))
@@ -146,7 +173,6 @@ func (r *Reader) Read(bs []byte) (int, error) {
 	if r.hdr.Length%2 == 1 {
 		r.inner.Discard(1)
 	}
-	r.hdr = nil
 	return copy(bs, vs[:n]), r.err
 }
 
