@@ -39,34 +39,22 @@ func NewWriter(w io.Writer) *Writer {
 
 func (w *Writer) WriteHeader(h *Header) error {
 	buf := new(bytes.Buffer)
-	if err := writeHeaderField(buf, path.Base(h.Name)+"/", 16); err != nil {
-		return err
-	}
-	t := h.ModTime.Unix()
-	if err := writeHeaderField(buf, strconv.FormatInt(t, 10), 12); err != nil {
-		return err
-	}
-	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Uid), 10), 6); err != nil {
-		return err
-	}
-	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Gid), 10), 6); err != nil {
-		return err
-	}
-	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Mode), 8), 8); err != nil {
-		return err
-	}
-	if err := writeHeaderField(buf, strconv.FormatInt(int64(h.Length), 10), 10); err != nil {
-		return err
-	}
+
+	writeHeaderField(buf, path.Base(h.Name)+"/", 16)
+	writeHeaderField(buf, strconv.FormatInt(h.ModTime.Unix(), 10), 12)
+	writeHeaderField(buf, strconv.FormatInt(int64(h.Uid), 10), 6)
+	writeHeaderField(buf, strconv.FormatInt(int64(h.Gid), 10), 6)
+	writeHeaderField(buf, strconv.FormatInt(int64(h.Mode), 8), 8)
+	writeHeaderField(buf, strconv.FormatInt(int64(h.Length), 10), 10)
 	buf.Write(feed)
+
 	_, err := io.Copy(w.inner, buf)
 	return err
 }
 
-func writeHeaderField(w io.Writer, s string, n int) error {
-	v := strings.Repeat(" ", n-len(s))
-	_, err := io.WriteString(w, s+v)
-	return err
+func writeHeaderField(w *bytes.Buffer, s string, n int) {
+	io.WriteString(w, s)
+	io.WriteString(w, strings.Repeat(" ", n-len(s)))
 }
 
 func (w *Writer) Write(bs []byte) (int, error) {
