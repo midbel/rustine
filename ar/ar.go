@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-  "io/ioutil"
-  "os"
+	"io/ioutil"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -83,8 +83,7 @@ func (w *Writer) Write(bs []byte) (int, error) {
 }
 
 func (w *Writer) Close() error {
-	_, err := w.inner.Write([]byte{0x0A})
-	return err
+	return nil
 }
 
 type Reader struct {
@@ -94,28 +93,28 @@ type Reader struct {
 }
 
 func List(file string) ([]*Header, error) {
-  f, err := os.Open(file)
-  if err != nil {
-    return nil, err
-  }
-  defer f.Close()
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
 
-  r, err := NewReader(f)
-  if err != nil {
-    return nil, err
-  }
-  hs := make([]*Header, 0, 100)
-  for {
-    h, err := r.Next()
-    if err == io.EOF {
-      break
-    }
-    hs = append(hs, h)
-    if _, err := io.CopyN(ioutil.Discard, r, int64(h.Length)); err != nil {
-      return nil, err
-    }
-  }
-  return hs, nil
+	r, err := NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	hs := make([]*Header, 0, 100)
+	for {
+		h, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		hs = append(hs, h)
+		if _, err := io.CopyN(ioutil.Discard, r, int64(h.Length)); err != nil {
+			return nil, err
+		}
+	}
+	return hs, nil
 }
 
 func NewReader(r io.Reader) (*Reader, error) {
