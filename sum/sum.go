@@ -29,6 +29,10 @@ func Sum1071(bs []byte) uint16 {
 	return uint16(s)
 }
 
+func Sum1071Bis(bs []byte) uint16 {
+	return ^Sum1071(bs)
+}
+
 func Fletcher16(bs []byte) uint16 {
 	var s1, s2 uint16
 	for i := 0; i < len(bs); i++ {
