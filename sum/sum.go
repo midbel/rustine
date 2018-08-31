@@ -30,7 +30,20 @@ func Sum1071(bs []byte) uint16 {
 }
 
 func Sum1071Bis(bs []byte) uint16 {
-	return ^Sum1071(bs)
+	var (
+		answer uint16
+		sum   uint64
+	)
+	r := bytes.NewReader(bs)
+	for r.Len() > 0 {
+		var word uint16
+		binary.Read(r, binary.LittleEndian, &word)
+		sum += uint64(word)
+	}
+	sum = (sum >> 16) + (sum & 0xffff)
+	sum += (sum >> 16)
+	answer = uint16(sum)
+	return ^answer
 }
 
 func Fletcher16(bs []byte) uint16 {
